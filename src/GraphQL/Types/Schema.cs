@@ -2,11 +2,18 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using GraphQL.Conversion;
 
 namespace GraphQL.Types
 {
     public interface ISchema : IDisposable
     {
+        bool Initialized { get; }
+
+        void Initialize();
+
+        IFieldNameConverter FieldNameConverter { get; set;}
+
         IObjectGraphType Query { get; set; }
 
         IObjectGraphType Mutation { get; set; }
@@ -19,12 +26,6 @@ namespace GraphQL.Types
 
         IGraphType FindType(string name);
 
-        IGraphType FindType(Type type);
-
-        IEnumerable<IGraphType> FindTypes(IEnumerable<Type> types);
-
-        IEnumerable<IGraphType> FindImplementationsOf(Type type);
-
         IEnumerable<Type> AdditionalTypes { get; }
 
         void RegisterTypes(params Type[] types);
@@ -36,6 +37,7 @@ namespace GraphQL.Types
     {
         private readonly Lazy<GraphTypesLookup> _lookup;
         private readonly List<Type> _additionalTypes;
+        private readonly List<IGraphType> _additionalInstances;
         private readonly List<DirectiveGraphType> _directives;
 
         public Schema()
@@ -49,12 +51,22 @@ namespace GraphQL.Types
 
             _lookup = new Lazy<GraphTypesLookup>(CreateTypesLookup);
             _additionalTypes = new List<Type>();
+            _additionalInstances = new List<IGraphType>();
             _directives = new List<DirectiveGraphType>
             {
                 DirectiveGraphType.Include,
                 DirectiveGraphType.Skip,
                 DirectiveGraphType.Deprecated
             };
+        }
+
+        public IFieldNameConverter FieldNameConverter { get; set;} = new CamelCaseFieldNameConverter();
+
+        public bool Initialized => _lookup.IsValueCreated;
+
+        public void Initialize()
+        {
+            FindType("__abcd__");
         }
 
         public IObjectGraphType Query { get; set; }
@@ -83,18 +95,18 @@ namespace GraphQL.Types
             }
         }
 
-        public IEnumerable<IGraphType> AllTypes
-        {
-            get
-            {
-                return _lookup
-                    .Value
-                    .All()
-                    .ToList();
-            }
-        }
+        public IEnumerable<IGraphType> AllTypes =>
+            _lookup
+                .Value
+                .All()
+                .ToList();
 
         public IEnumerable<Type> AdditionalTypes => _additionalTypes;
+
+        public void RegisterTypes(params IGraphType[] types)
+        {
+            _additionalInstances.AddRange(types);
+        }
 
         public void RegisterTypes(params Type[] types)
         {
@@ -121,41 +133,14 @@ namespace GraphQL.Types
             return _lookup.Value[name];
         }
 
-        public IGraphType FindType(Type type)
-        {
-            if (type == null)
-            {
-                return null;
-            }
-
-            if (type.GetTypeInfo().IsGenericType)
-            {
-                var genericDef = type.GetGenericTypeDefinition();
-                if (genericDef == typeof(ListGraphType<>) || genericDef == typeof(NonNullGraphType<>))
-                {
-                    return (GraphType) Activator.CreateInstance(type);
-                }
-            }
-
-            return _lookup.Value[type] ?? AddType(type);
-        }
-
-        public IEnumerable<IGraphType> FindTypes(IEnumerable<Type> types)
-        {
-            return types.Select(FindType).ToList();
-        }
-
-        public IEnumerable<IGraphType> FindImplementationsOf(Type type)
-        {
-            return _lookup.Value.FindImplemenationsOf(type);
-        }
-
         public void Dispose()
         {
             ResolveType = null;
             Query = null;
             Mutation = null;
             Subscription = null;
+            _additionalInstances.Clear();
+            _additionalTypes.Clear();
 
             if (_lookup.IsValueCreated)
             {
@@ -165,7 +150,7 @@ namespace GraphQL.Types
 
         private void RegisterType(Type type)
         {
-            if (!typeof (GraphType).IsAssignableFrom(type))
+            if (!typeof (IGraphType).IsAssignableFrom(type))
             {
                 throw new ArgumentOutOfRangeException(nameof(type), "Type must be of GraphType.");
             }
@@ -177,35 +162,18 @@ namespace GraphQL.Types
         {
             var resolvedTypes = _additionalTypes.Select(t => ResolveType(t.GetNamedType())).ToList();
 
-            var types = new List<IGraphType>
-            {
-                Query,
-                Mutation,
-                Subscription
-            }
-            .Concat(resolvedTypes)
-            .Where(x => x != null)
-            .ToList();
+            var types = _additionalInstances.Concat(
+                    new IGraphType[]
+                    {
+                        Query,
+                        Mutation,
+                        Subscription
+                    })
+                .Concat(resolvedTypes)
+                .Where(x => x != null)
+                .ToList();
 
-            return GraphTypesLookup.Create(types, ResolveType);
-        }
-
-        private IGraphType AddType(Type type)
-        {
-            if (type == null)
-            {
-                return null;
-            }
-
-            var ctx = new TypeCollectionContext(ResolveType, (name, graphType, context) =>
-            {
-                _lookup.Value.AddType(graphType, context);
-            });
-
-            var namedType = type.GetNamedType();
-            var instance = ResolveType(namedType);
-            _lookup.Value.AddType(instance, ctx);
-            return instance;
+            return GraphTypesLookup.Create(types, _directives, ResolveType, FieldNameConverter);
         }
     }
 }

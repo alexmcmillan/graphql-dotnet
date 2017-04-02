@@ -3,8 +3,6 @@ using GraphQL.Types;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Shouldly;
 using Xunit;
 
@@ -12,8 +10,18 @@ namespace GraphQL.Tests.Types
 {
     public class ComplexGraphTypeTests
     {
-        internal class ComplexType<T> : ComplexGraphType<T> { }
+        internal class ComplexType<T> : ComplexGraphType<T> {
+            public ComplexType()
+            {
+                Name = typeof(T).Name;
+            }
+        }
 
+        internal class TestObject
+        {
+            public int? someInt { get; set; }
+            public KeyValuePair<int, string> valuePair { get; set; }
+        }
 
         [Fact]
         public void accepts_property_expressions()
@@ -21,10 +29,9 @@ namespace GraphQL.Tests.Types
             var type = new ComplexType<Droid>();
             var field = type.Field(d => d.Name);
 
-            type.Fields.Last().Name.ShouldBe("name");
+            type.Fields.Last().Name.ShouldBe("Name");
             type.Fields.Last().Type.ShouldBe(typeof(NonNullGraphType<StringGraphType>));
         }
-
 
         [Fact]
         public void allows_custom_name()
@@ -37,7 +44,7 @@ namespace GraphQL.Tests.Types
         }
 
         [Fact]
-        public void infers_nullable_types()
+        public void allows_nullable_types()
         {
             var type = new ComplexType<Droid>();
 
@@ -47,13 +54,50 @@ namespace GraphQL.Tests.Types
         }
 
         [Fact]
+        public void infers_from_nullable_types()
+        {
+            var type = new ComplexType<TestObject>();
+
+            type.Field(d => d.someInt, nullable: true);
+
+            type.Fields.Last().Type.ShouldBe(typeof(IntGraphType));
+        }
+
+        [Fact]
         public void throws_when_name_is_not_inferable()
         {
             var type = new ComplexType<Droid>();
 
-            Should.Throw<ArgumentException>(() =>
+            var exp = Should.Throw<ArgumentException>(() =>
                 type.Field(d => d.AppearsIn.First())
             );
+            exp.Message.ShouldBe(
+                "Cannot infer a Field name from the expression: 'd.AppearsIn.First()' on parent GraphQL type: 'Droid'.");
+        }
+
+        [Fact]
+        public void throws_when_type_is_not_inferable()
+        {
+            var type = new ComplexType<TestObject>();
+
+            var exp = Should.Throw<ArgumentException>(() =>
+                type.Field(d => d.valuePair)
+            );
+            exp.Message.ShouldStartWith(
+                "The GraphQL type for Field: 'valuePair' on parent type: 'TestObject' could not be derived implicitly.");
+        }
+
+        [Fact]
+        public void throws_when_type_is_incompatible()
+        {
+            var type = new ComplexType<TestObject>();
+
+            var exp = Should.Throw<ArgumentException>(() =>
+                type.Field(d => d.someInt)
+            );
+
+            exp.InnerException.Message.ShouldStartWith(
+                "Explicitly nullable type: Nullable<Int32> cannot be coerced to a non nullable GraphQL type.");
         }
 
         [Fact]

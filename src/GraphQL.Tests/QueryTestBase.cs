@@ -2,11 +2,13 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using GraphQL.Conversion;
 using GraphQL.Execution;
 using GraphQL.Http;
 using GraphQL.StarWars.IoC;
 using GraphQL.Types;
 using GraphQL.Validation;
+using GraphQL.Validation.Complexity;
 using GraphQLParser.Exceptions;
 using Newtonsoft.Json.Linq;
 using Shouldly;
@@ -25,7 +27,7 @@ namespace GraphQL.Tests
         public QueryTestBase()
         {
             Services = new SimpleContainer();
-            Executer = new DocumentExecuter(new TDocumentBuilder(), new DocumentValidator());
+            Executer = new DocumentExecuter(new TDocumentBuilder(), new DocumentValidator(), new ComplexityAnalyzer());
             Writer = new DocumentWriter(indent: true);
         }
 
@@ -75,14 +77,24 @@ namespace GraphQL.Tests
             CancellationToken cancellationToken = default(CancellationToken),
             int expectedErrorCount = 0)
         {
-            var runResult = Executer.ExecuteAsync(Schema, root, query, null, inputs, userContext, cancellationToken).Result;
+            var runResult = Executer.ExecuteAsync(_ =>
+            {
+                _.Schema = Schema;
+                _.Query = query;
+                _.Root = root;
+                _.Inputs = inputs;
+                _.UserContext = userContext;
+                _.CancellationToken = cancellationToken;
+            }).Result;
 
-            var writtenResult = Writer.Write(new ExecutionResult {Data = runResult.Data});
+            // var runResult = Executer.ExecuteAsync(Schema, root, query, null, inputs, userContext, cancellationToken).Result;
+
+            var writtenResult = Writer.Write(new ExecutionResult { Data = runResult.Data });
             var expectedResult = Writer.Write(expectedExecutionResult);
 
-#if DEBUG
-            Console.WriteLine(writtenResult);
-#endif
+// #if DEBUG
+//             Console.WriteLine(writtenResult);
+// #endif
 
             writtenResult.ShouldBe(expectedResult);
 
@@ -102,23 +114,35 @@ namespace GraphQL.Tests
             CancellationToken cancellationToken = default(CancellationToken),
             IEnumerable<IValidationRule> rules = null)
         {
-            var runResult = Executer.ExecuteAsync(
-                Schema,
-                root,
-                query,
-                null,
-                inputs,
-                userContext,
-                cancellationToken,
-                rules
-                ).Result;
+            var runResult = Executer.ExecuteAsync(_ =>
+            {
+                _.Schema = Schema;
+                _.Query = query;
+                _.Root = root;
+                _.Inputs = inputs;
+                _.UserContext = userContext;
+                _.CancellationToken = cancellationToken;
+                _.ValidationRules = rules;
+                _.FieldNameConverter = new CamelCaseFieldNameConverter();
+            }).Result;
+
+            // var runResult = Executer.ExecuteAsync(
+            //     Schema,
+            //     root,
+            //     query,
+            //     null,
+            //     inputs,
+            //     userContext,
+            //     cancellationToken,
+            //     rules
+            //     ).Result;
 
             var writtenResult = Writer.Write(runResult);
             var expectedResult = Writer.Write(expectedExecutionResult);
 
-#if DEBUG
-            Console.WriteLine(writtenResult);
-#endif
+// #if DEBUG
+//             Console.WriteLine(writtenResult);
+// #endif
 
             string additionalInfo = null;
 

@@ -67,7 +67,18 @@ namespace GraphQL
 
             var value = propertyValue;
 
-            fieldType = Nullable.GetUnderlyingType(fieldType) ?? fieldType;
+            var nullableFieldType = Nullable.GetUnderlyingType(fieldType);
+
+            // if this is a nullable type and the value is null, return null
+            if(nullableFieldType != null && value == null)
+            {
+                return null;
+            }
+
+            if(nullableFieldType != null)
+            {
+                fieldType = nullableFieldType;
+            }
 
             if (propertyValue is Dictionary<string, object>)
             {
@@ -94,6 +105,16 @@ namespace GraphQL
             return ConvertValue(value, fieldType);
         }
 
+        public static object GetProperyValue(this object obj, string propertyName)
+        {
+            var val = obj.GetType()
+                .GetProperty(propertyName, BindingFlags.IgnoreCase | BindingFlags.Public | BindingFlags.Instance)
+                .GetValue(obj, null);
+
+            return val;
+        }
+
+
         public static Type GetInterface(this Type type, string name)
         {
             return type.GetInterfaces().FirstOrDefault(x => x.Name == name);
@@ -102,7 +123,11 @@ namespace GraphQL
         public static object ConvertValue(object value, Type fieldType)
         {
             if (value == null) return null;
-            if (fieldType == typeof(DateTime) && value is DateTime) return value;
+
+            if (fieldType == typeof(DateTime) && value is DateTime)
+            {
+                return value;
+            }
 
             var text = value.ToString();
             return _conversions.Value.Convert(fieldType, text);

@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using GraphQL.Language;
 using GraphQL.Language.AST;
 using GraphQL.Types;
 
@@ -46,7 +45,7 @@ namespace GraphQL.Validation.Rules
                             BadValueForNonNullArgMessage(
                                 name,
                                 context.Print(inputType),
-                                context.Print(context.Schema.FindType(nonNullType.Type))),
+                                context.Print(nonNullType.ResolvedType)),
                             defaultValue));
                     }
 

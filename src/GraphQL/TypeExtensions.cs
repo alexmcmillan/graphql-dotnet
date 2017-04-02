@@ -67,8 +67,20 @@ namespace GraphQL
 
         public static Type GetGraphTypeFromType(this Type type, bool isNullable = false)
         {
+            TypeInfo info = type.GetTypeInfo();
             Type graphType = null;
 
+            if (info.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))
+            {
+                type = type.GetGenericArguments()[0];
+                if (isNullable == false)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(isNullable),
+                        $"Explicitly nullable type: Nullable<{type.Name}> cannot be coerced to a non nullable GraphQL type. \n");
+                }
+            }
+
+  
             if (type == typeof(int))
             {
                 graphType = typeof(IntGraphType);
@@ -79,9 +91,14 @@ namespace GraphQL
                 graphType = typeof(IntGraphType);
             }
 
-            if (type == typeof(double))
+            if (type == typeof(double) || type == typeof(float))
             {
                 graphType = typeof(FloatGraphType);
+            }
+
+            if (type == typeof(decimal))
+            {
+                graphType = typeof(DecimalGraphType);
             }
 
             if (type == typeof(string))
@@ -99,9 +116,17 @@ namespace GraphQL
                 graphType = typeof(DateGraphType);
             }
 
+            if (type.IsArray)
+            {
+                var elementType = GetGraphTypeFromType(type.GetElementType(), isNullable);
+                var listType = typeof(ListGraphType<>);
+                graphType = listType.MakeGenericType(elementType);
+            }
+
             if (graphType == null)
             {
-                throw new ArgumentOutOfRangeException(nameof(type), "Unknown input type.");
+                throw new ArgumentOutOfRangeException(nameof(type), 
+                    $"The type: {type.Name} cannot be coerced effectively to a GraphQL type");
             }
 
             if (!isNullable)

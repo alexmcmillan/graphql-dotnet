@@ -1,7 +1,6 @@
 ﻿using System;
 using GraphQL.Types;
 using GraphQL.Resolvers;
-using System.Linq.Expressions;
 
 namespace GraphQL.Builders
 {
@@ -15,8 +14,7 @@ namespace GraphQL.Builders
 
     public class FieldBuilder<TSourceType, TReturnType>
     {
-
-        private FieldType _fieldType { get; set; }
+        private readonly FieldType _fieldType;
 
         public FieldType FieldType => _fieldType;
 
@@ -33,6 +31,12 @@ namespace GraphQL.Builders
                 Arguments = new QueryArguments(),
             };
             return new FieldBuilder<TSourceType, TReturnType>(fieldType);
+        }
+
+        public FieldBuilder<TSourceType, TReturnType> Type(IGraphType type)
+        {
+            _fieldType.ResolvedType = type;
+            return this;
         }
 
         public FieldBuilder<TSourceType, TReturnType> Name(string name)
@@ -94,6 +98,12 @@ namespace GraphQL.Builders
                 Description = description,
                 DefaultValue = defaultValue,
             });
+            return this;
+        }
+
+        public FieldBuilder<TSourceType, TReturnType> Configure(Action<FieldType> configure)
+        {
+            configure(FieldType);
             return this;
         }
     }

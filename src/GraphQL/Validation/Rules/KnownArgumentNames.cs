@@ -1,6 +1,4 @@
-﻿using System;
-using System.Linq;
-using GraphQL.Language;
+﻿using System.Linq;
 using GraphQL.Language.AST;
 using GraphQL.Utilities;
 
@@ -8,33 +6,31 @@ namespace GraphQL.Validation.Rules
 {
     /// <summary>
     /// Known argument names
-    /// 
+    ///
     /// A GraphQL field is only valid if all supplied arguments are defined by
     /// that field.
     /// </summary>
     public class KnownArgumentNames : IValidationRule
     {
-        public Func<string, string, string, string[], string> UnknownArgMessage =
-            (argName, fieldName, type, suggestedArgs) =>
+        public string UnknownArgMessage(string argName, string fieldName, string type, string[] suggestedArgs)
+        {
+            var message = $"Unknown argument \"{argName}\" on field \"{fieldName}\" of type \"{type}\".";
+            if (suggestedArgs != null && suggestedArgs.Length > 0)
             {
-                var message = $"Unknown argument \"{argName}\" on field \"{fieldName}\" of type \"{type}\".";
-                if (suggestedArgs != null && suggestedArgs.Length > 0)
-                {
-                    message += $"Did you mean {StringUtils.QuotedOrList(suggestedArgs)}";
-                }
-                return message;
-            };
+                message += $"Did you mean {StringUtils.QuotedOrList(suggestedArgs)}";
+            }
+            return message;
+        }
 
-        public Func<string, string, string[], string> UnknownDirectiveArgMessage =
-            (argName, directiveName, suggestedArgs) =>
+        public string UnknownDirectiveArgMessage(string argName, string directiveName, string[] suggestedArgs)
+        {
+            var message = $"Unknown argument \"{argName}\" on directive \"{directiveName}\".";
+            if (suggestedArgs != null && suggestedArgs.Length > 0)
             {
-                var message = $"Unknown argument \"{argName}\" on directive \"{directiveName}\".";
-                if (suggestedArgs != null && suggestedArgs.Length > 0)
-                {
-                    message += $"Did you mean {StringUtils.QuotedOrList(suggestedArgs)}";
-                }
-                return message;
-            };
+                message += $"Did you mean {StringUtils.QuotedOrList(suggestedArgs)}";
+            }
+            return message;
+        }
 
         public INodeVisitor Validate(ValidationContext context)
         {
@@ -49,7 +45,7 @@ namespace GraphQL.Validation.Rules
                         var fieldDef = context.TypeInfo.GetFieldDef();
                         if (fieldDef != null)
                         {
-                            var fieldArgDef = fieldDef.Arguments.Find(node.Name);
+                            var fieldArgDef = fieldDef.Arguments?.Find(node.Name);
                             if (fieldArgDef == null)
                             {
                                 var parentType = context.TypeInfo.GetParentType();
@@ -61,7 +57,7 @@ namespace GraphQL.Validation.Rules
                                         node.Name,
                                         fieldDef.Name,
                                         context.Print(parentType),
-                                        StringUtils.SuggestionList(node.Name, fieldDef.Arguments.Select(q => q.Name))),
+                                        StringUtils.SuggestionList(node.Name, fieldDef.Arguments?.Select(q => q.Name))),
                                     node));
                             }
                         }
@@ -70,7 +66,7 @@ namespace GraphQL.Validation.Rules
                         var directive = context.TypeInfo.GetDirective();
                         if (directive != null)
                         {
-                            var directiveArgDef = directive.Arguments.Find(node.Name);
+                            var directiveArgDef = directive.Arguments?.Find(node.Name);
                             if (directiveArgDef == null)
                             {
                                 context.ReportError(new ValidationError(
@@ -79,7 +75,7 @@ namespace GraphQL.Validation.Rules
                                     UnknownDirectiveArgMessage(
                                         node.Name,
                                         directive.Name,
-                                        StringUtils.SuggestionList(node.Name, directive.Arguments.Select(q => q.Name))),
+                                        StringUtils.SuggestionList(node.Name, directive.Arguments?.Select(q => q.Name))),
                                     node));
                             }
                         }

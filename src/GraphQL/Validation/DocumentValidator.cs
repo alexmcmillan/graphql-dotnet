@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.Linq;
-using GraphQL.Language;
 using GraphQL.Language.AST;
 using GraphQL.Types;
 using GraphQL.Validation.Rules;
@@ -13,7 +12,8 @@ namespace GraphQL.Validation
             string originalQuery,
             ISchema schema,
             Document document,
-            IEnumerable<IValidationRule> rules = null);
+            IEnumerable<IValidationRule> rules = null,
+            object userContext = null);
     }
 
     public class DocumentValidator : IDocumentValidator
@@ -22,14 +22,21 @@ namespace GraphQL.Validation
             string originalQuery,
             ISchema schema,
             Document document,
-            IEnumerable<IValidationRule> rules = null)
+            IEnumerable<IValidationRule> rules = null,
+            object userContext = null)
         {
+            if (!schema.Initialized)
+            {
+                schema.Initialize();
+            }
+
             var context = new ValidationContext
             {
                 OriginalQuery = originalQuery,
                 Schema = schema,
                 Document = document,
-                TypeInfo = new TypeInfo(schema)
+                TypeInfo = new TypeInfo(schema),
+                UserContext = userContext
             };
 
             if (rules == null)
@@ -40,9 +47,9 @@ namespace GraphQL.Validation
             var visitors = rules.Select(x => x.Validate(context)).ToList();
 
             visitors.Insert(0, context.TypeInfo);
-#if DEBUG
-            visitors.Insert(1, new DebugNodeVisitor());
-#endif
+// #if DEBUG
+//             visitors.Insert(1, new DebugNodeVisitor());
+// #endif
 
             var basic = new BasicVisitor(visitors.ToArray());
 

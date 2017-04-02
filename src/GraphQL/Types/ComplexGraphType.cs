@@ -1,10 +1,10 @@
-using GraphQL;
 using GraphQL.Builders;
 using GraphQL.Resolvers;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Threading.Tasks;
 
 namespace GraphQL.Types
 {
@@ -40,12 +40,14 @@ namespace GraphQL.Types
         {
             if (HasField(fieldType.Name))
             {
-                throw new ArgumentOutOfRangeException(nameof(fieldType.Name), "A field with that name is already registered.");
+                throw new ArgumentOutOfRangeException(nameof(fieldType.Name),
+                    $"A field with the name: {fieldType.Name} is already registered for GraphType: {Name ?? this.GetType().Name}");
             }
 
-            if (!fieldType.Type.IsGraphType())
+            if (fieldType.ResolvedType == null && !fieldType.Type.IsGraphType())
             {
-                throw new ArgumentOutOfRangeException(nameof(fieldType.Type), "Field type must derive from GraphType.");
+                throw new ArgumentOutOfRangeException(nameof(fieldType.Type),
+                    $"The declared Field type: {fieldType.Type.Name} should derive from GraphType, but doesn't.");
             }
 
             _fields.Add(fieldType);
@@ -61,7 +63,6 @@ namespace GraphQL.Types
             Func<ResolveFieldContext<TSourceType>, object> resolve = null,
             string deprecationReason = null)
         {
-
             return AddField(new FieldType
             {
                 Name = name,
@@ -69,8 +70,8 @@ namespace GraphQL.Types
                 DeprecationReason = deprecationReason,
                 Type = type,
                 Arguments = arguments,
-                Resolver = resolve != null 
-                    ? new FuncFieldResolver<TSourceType, object>(resolve) 
+                Resolver = resolve != null
+                    ? new FuncFieldResolver<TSourceType, object>(resolve)
                     : null,
             });
         }
@@ -96,6 +97,27 @@ namespace GraphQL.Types
             });
         }
 
+        public FieldType FieldAsync<TGraphType>(
+            string name,
+            string description = null,
+            QueryArguments arguments = null,
+            Func<ResolveFieldContext<TSourceType>, Task<object>> resolve = null,
+            string deprecationReason = null)
+            where TGraphType : IGraphType
+        {
+            return AddField(new FieldType
+            {
+                Name = name,
+                Description = description,
+                DeprecationReason = deprecationReason,
+                Type = typeof(TGraphType),
+                Arguments = arguments,
+                Resolver = resolve != null
+                    ? new FuncFieldResolver<TSourceType, Task<object>>(resolve)
+                    : null,
+            });
+        }
+
         public FieldBuilder<TSourceType, TReturnType> Field<TGraphType, TReturnType>()
         {
             var builder = FieldBuilder.Create<TSourceType, TReturnType>(typeof(TGraphType));
@@ -116,7 +138,18 @@ namespace GraphQL.Types
            bool nullable = false,
            Type type = null)
         {
-            type = type ?? typeof(TProperty).GetGraphTypeFromType(nullable);
+            try
+            {
+                if (type == null)
+                    type = typeof(TProperty).GetGraphTypeFromType(nullable);
+            }
+            catch (ArgumentOutOfRangeException exp)
+            {
+                throw new ArgumentException(
+                    $"The GraphQL type for Field: '{name}' on parent type: '{Name ?? GetType().Name}' could not be derived implicitly. \n",
+                    exp
+                 );
+            }
 
             var builder = FieldBuilder.Create<TSourceType, TProperty>(type)
                 .Resolve(new ExpressionFieldResolver<TSourceType, TProperty>(expression))
@@ -133,12 +166,22 @@ namespace GraphQL.Types
         {
             string name;
             try {
-                name = expression.NameOf().ToCamelCase();
+                name = expression.NameOf();
             }
             catch {
-                throw new ArgumentException("Cannot infer a Field name from the provided expression");
+                throw new ArgumentException(
+                    $"Cannot infer a Field name from the expression: '{expression.Body.ToString()}' " +
+                    $"on parent GraphQL type: '{Name ?? GetType().Name}'.");
             }
             return Field(name, expression, nullable, type);
+        }
+
+        public ConnectionBuilder<TNodeType, TSourceType> Connection<TNodeType>()
+            where TNodeType : IGraphType
+        {
+            var builder = ConnectionBuilder.Create<TNodeType, TSourceType>();
+            AddField(builder.FieldType);
+            return builder;
         }
     }
 }
